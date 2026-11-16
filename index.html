@@ -46,8 +46,9 @@ const mealRecipes=[
 ];
 let lastPlan=null;
 function togglePlanMode(){$('planApiField').classList.toggle('hide',$('planMode').value!=='ai')}
-function recipePrice(rec,people){return rec.i.reduce((sum,[id,q])=>sum+(data.products[id]?.price||0)*q*people,0)}
-function recipeAllowed(rec,excluded){const names=rec.i.map(([id])=>data.products[id]?.name?.toLocaleLowerCase('ru')||'');return rec.i.every(([id])=>!!data.products[id])&&!excluded.some(x=>names.some(n=>n.includes(x)))}
+function recipeProduct(id){const name=defaults[id]?.name;return data.products.find(p=>p.name===name&&!p.brand)||data.products.find(p=>p.name===name)}
+function recipePrice(rec,people){return rec.i.reduce((sum,[id,q])=>sum+(recipeProduct(id)?.price||0)*q*people,0)}
+function recipeAllowed(rec,excluded){const names=rec.i.map(([id])=>recipeProduct(id)?.name?.toLocaleLowerCase('ru')||'');return rec.i.every(([id])=>!!recipeProduct(id))&&!excluded.some(x=>names.some(n=>n.includes(x)))}
 function planSettings(){const budget=Number($('planBudget').value),people=Number($('planPeople').value),days=Number($('planDays').value),meals=Number($('planMeals').value),excludes=$('planExclude').value.toLocaleLowerCase('ru').split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean);if(!Number.isFinite(budget)||budget<100||!Number.isInteger(people)||people<1||people>12)throw Error('Проверь бюджет и количество человек.');return {budget,people,days,meals,excludes}}
 function makeLocalPlan(cfg){const eligible=mealRecipes.filter(r=>recipeAllowed(r,cfg.excludes));if(!eligible.length)throw Error('Не осталось подходящих рецептов. Убери часть исключений или добавь продукты.');
 const slots=Array.from({length:cfg.days},(_,d)=>Array.from({length:cfg.meals},(_,m)=>({d,m,t:cfg.meals===3&&m===0?'breakfast':'main'}))).flat();
@@ -59,7 +60,7 @@ let limit=cfg.budget-total-minFuture;
 let affordable=candidates.filter(r=>recipePrice(r,cfg.people)<=limit+0.001);
 let pool=affordable.length?affordable:candidates;
 pool.sort((a,b)=>{const ca=recipePrice(a,cfg.people),cb=recipePrice(b,cfg.people);const diversityA=(used[a.n]||0)*Math.max(100,ca*.65),diversityB=(used[b.n]||0)*Math.max(100,cb*.65);const costFactor=affordable.length?0.28:1;return ca*costFactor+diversityA-(cb*costFactor+diversityB)});
-const chosen=pool[0],cost=recipePrice(chosen,cfg.people);used[chosen.n]=(used[chosen.n]||0)+1;rows.push({day:slot.d,meal:slot.m,name:chosen.n,ingredients:chosen.i.map(([id,q])=>({id:data.products[id].id,qty:q*cfg.people})),steps:chosen.steps,cost});total+=cost;});
+const chosen=pool[0],cost=recipePrice(chosen,cfg.people);used[chosen.n]=(used[chosen.n]||0)+1;rows.push({day:slot.d,meal:slot.m,name:chosen.n,ingredients:chosen.i.map(([id,q])=>({id:recipeProduct(id).id,qty:q*cfg.people})),steps:chosen.steps,cost});total+=cost;});
 return {source:'local',cfg,rows,total}}
 function validateAIPlan(payload,cfg){if(!payload||!Array.isArray(payload.rows)||payload.rows.length!==cfg.days*cfg.meals)throw Error('ИИ вернул неполный план.');
 const validIds=new Set(data.products.map(p=>p.id));let rows=payload.rows.map((r,i)=>{if(!r||!Array.isArray(r.ingredients)||!r.ingredients.length||r.ingredients.length>12)throw Error('Неверный состав рецепта.');let ingredients=r.ingredients.map(x=>{const qty=Number(x.qty);if(!validIds.has(x.id)||!Number.isFinite(qty)||qty<=0||qty>100)throw Error('ИИ указал неизвестный продукт или некорректное количество.');return {id:x.id,qty}});if(cfg.excludes.some(word=>ingredients.some(x=>(prod(x.id).name||'').toLocaleLowerCase('ru').includes(word))))throw Error('ИИ добавил исключённый продукт.');return {day:Math.floor(i/cfg.meals),meal:i%cfg.meals,name:String(r.name||'Блюдо').slice(0,120),steps:String(r.steps||'Приготовь продукты до готовности.').slice(0,1300),ingredients,cost:ingredients.reduce((sum,x)=>sum+prod(x.id).price*x.qty,0)}});let total=rows.reduce((sum,r)=>sum+r.cost,0);return {source:'ai',cfg,rows,total}}
