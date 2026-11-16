@@ -24,10 +24,11 @@ export default {
      const raw=await request.text();
      if(raw.length>65000) return reply({error:'Request too large'},413);
      const p=JSON.parse(raw);
-     const {people,days,meals,budget}=p;
+     const {people,days,meals,budget,targetKcal}=p;
      if(!Number.isInteger(people)||people<1||people>12||
         ![3,5,7].includes(days)||![2,3].includes(meals)||
         !Number.isFinite(budget)||budget<100||budget>10000000||
+        !Number.isFinite(targetKcal)||targetKcal<800||targetKcal>6000||
         !Array.isArray(p.products)||p.products.length>250) return reply({error:'Invalid inputs'},400);
      const products=p.products.filter(x=>typeof x.id==='string'&&
        typeof x.name==='string'&&typeof x.price==='number'&&x.price>=0&&
@@ -35,7 +36,7 @@ export default {
          id:x.id.slice(0,80),name:x.name.slice(0,100),price:x.price,unit:x.unit,
          category:String(x.category||'').slice(0,40)}));
      if(products.length<3) return reply({error:'Too few products'},400);
-     const constraints={budget,people,days,meals,excludes:
+     const constraints={budget,people,days,meals,targetKcal,excludes:
        Array.isArray(p.excludes)?p.excludes.slice(0,20).map(x=>String(x).slice(0,70)):[]};
      const system=[
        'Ты повар и планировщик покупок для Казахстана. Ответь исключительно JSON объектом {"rows":[...]}.',
@@ -45,6 +46,7 @@ export default {
        'Используй только id продуктов из присланного каталога; qty — объём покупки для ВСЕХ людей:',
        'для кг — в килограммах, для л — в литрах, для шт — в штуках.',
        'Старайся уложиться в бюджет на все блюда. Учитывай исключения.',
+       'Ориентируйся на указанную targetKcal в сутки на человека, но не придумывай калорийность и не заявляй о медицинской полноценности рациона.',
        'Шаги приготовления должны быть практичными и безопасными; курица и яйца должны быть полностью приготовлены.',
        'Если из доступных продуктов невозможно составить питательно полноценное меню, не заявляй о его полноценности.',
        'Отвечай на русском языке. JSON без markdown.'
